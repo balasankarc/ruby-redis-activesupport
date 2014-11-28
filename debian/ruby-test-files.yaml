@@ -1,0 +1,4 @@
+---
+- test/active_support/cache/redis_store_test.rb
+- test/redis/activesupport/version_test.rb
+- test/test_helper.rb

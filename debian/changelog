@@ -1,0 +1,5 @@
+ruby-redis-activesupport (4.0.0-1) UNRELEASED; urgency=medium
+
+  * Initial release (Closes: #nnnn)
+
+ -- Balasankar C <balasankarc@autistici.org>  Fri, 28 Nov 2014 20:56:24 +0530
