@@ -1,5 +1,5 @@
 ruby-redis-activesupport (4.0.0-1) unstable; urgency=medium
 
-  * Initial release (Closes: #123456)
+  * Initial release (Closes: #771398)
 
  -- Balasankar C <balasankarc@autistici.org>  Fri, 28 Nov 2014 20:15:08 +0530
