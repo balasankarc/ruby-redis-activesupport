@@ -1,4 +1,4 @@
-ruby-redis-activesupport (4.0.0-2) experimental; urgency=medium
+ruby-redis-activesupport (4.0.0-2) unstable; urgency=medium
 
   * Debian update
   * Move starting of redis-server to ruby-tests.rake for DebCI
