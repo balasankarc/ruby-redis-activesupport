@@ -7,7 +7,7 @@ Build-Depends: debhelper (>= 7.0.50~), gem2deb,ruby-redis-store, redis-server, r
 Standards-Version: 3.9.6
 Vcs-Git: git://anonscm.debian.org/pkg-ruby-extras/ruby-redis-activesupport.git
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=pkg-ruby-extras/ruby-redis-activesupport.git;a=summary
-Homepage: http://redis-store.org/redis-activesupport
+Homepage: https://github.com/redis-store/redis-activesupport
 Testsuite: autopkgtest-pkg-ruby
 XS-Ruby-Versions: all
 

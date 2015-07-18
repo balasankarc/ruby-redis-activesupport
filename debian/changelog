@@ -1,3 +1,9 @@
+ruby-redis-activesupport (4.0.0-3) unstable; urgency=medium
+
+  * Fix homepage field in debian/control. 
+
+ -- Balasankar C <balasankarc@autistici.org>  Sat, 18 Jul 2015 10:03:22 +0530
+
 ruby-redis-activesupport (4.0.0-2) unstable; urgency=medium
 
   * Move starting of redis-server to ruby-tests.rake for DebCI
