@@ -1,0 +1,15 @@
+Description: Fix incorrect version test
+Author: Balasankar C <balasankarc@autistici.org>
+Last-Update: 2015-07-28
+---
+This patch header follows DEP-3: http://dep.debian.net/deps/dep3/
+--- a/test/redis/activesupport/version_test.rb
++++ b/test/redis/activesupport/version_test.rb
+@@ -3,6 +3,6 @@
+ require 'redis/activesupport/version'
+ describe Redis::ActiveSupport::VERSION do
+   it 'returns current version' do
+-    Redis::ActiveSupport::VERSION.must_equal '4.0.0'
++    Redis::ActiveSupport::VERSION.must_equal '4.1.0'
+   end
+ end
