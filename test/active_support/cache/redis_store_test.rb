@@ -1,9 +1,20 @@
 require 'test_helper'
+require 'ostruct'
+require 'connection_pool'
 
 describe ActiveSupport::Cache::RedisStore do
   def setup
     @store  = ActiveSupport::Cache::RedisStore.new
-    @dstore = ActiveSupport::Cache::RedisStore.new "redis://127.0.0.1:6380/1", "redis://127.0.0.1:6381/1"
+    @dstore = ActiveSupport::Cache::RedisStore.new "redis://127.0.0.1:6379/5", "redis://127.0.0.1:6379/6"
+    @pool_store  = ActiveSupport::Cache::RedisStore.new("redis://127.0.0.1:6379/2", pool_size: 5, pool_timeout: 10)
+    @external_pool_store = ActiveSupport::Cache::RedisStore.new(pool: ::ConnectionPool.new(size: 1, timeout: 1) { ::Redis::Store::Factory.create("redis://127.0.0.1:6379/3") })
+
+    @pool_store.data.class.must_equal ::ConnectionPool
+    @pool_store.data.instance_variable_get(:@size).must_equal 5
+    @external_pool_store.data.class.must_equal ::ConnectionPool
+    @external_pool_store.data.instance_variable_get(:@size).must_equal 1
+
+
     @rabbit = OpenStruct.new :name => "bunny"
     @white_rabbit = OpenStruct.new :color => "white"
 
@@ -12,6 +23,56 @@ describe ActiveSupport::Cache::RedisStore do
       store.delete "counter"
       store.delete "rub-a-dub"
     end
+  end
+
+  it "raises an error if :pool isn't a pool" do
+    assert_raises(RuntimeError, 'pool must be an instance of ConnectionPool') do
+      ActiveSupport::Cache::RedisStore.new(pool: 'poolio')
+    end
+  end
+
+  it "namespaces all operations" do
+    address = "redis://127.0.0.1:6380/1/cache-namespace"
+    store   = ActiveSupport::Cache::RedisStore.new(address)
+    redis   = Redis.new(url: address)
+
+    store.write("white-rabbit", 0)
+
+    redis.exists('cache-namespace:white-rabbit').must_equal(true)
+  end
+
+  it "creates a normal store when given no addresses" do
+    underlying_store = instantiate_store
+    underlying_store.must_be_instance_of(::Redis::Store)
+  end
+
+  it "creates a normal store when given options only" do
+    underlying_store = instantiate_store(:expires_in => 1.second)
+    underlying_store.must_be_instance_of(::Redis::Store)
+  end
+
+  it "creates a normal store when given a single address" do
+    underlying_store = instantiate_store("redis://127.0.0.1:6380/1")
+    underlying_store.must_be_instance_of(::Redis::Store)
+  end
+
+  it "creates a normal store when given a single address and options" do
+    underlying_store = instantiate_store("redis://127.0.0.1:6380/1",
+                                         { :expires_in => 1.second})
+    underlying_store.must_be_instance_of(::Redis::Store)
+  end
+
+  it "creates a distributed store when given multiple addresses" do
+    underlying_store = instantiate_store("redis://127.0.0.1:6380/1", 
+                                         "redis://127.0.0.1:6381/1")
+    underlying_store.must_be_instance_of(::Redis::DistributedStore)
+  end
+
+  it "creates a distributed store when given multiple address and options" do
+    underlying_store = instantiate_store("redis://127.0.0.1:6380/1",
+                                         "redis://127.0.0.1:6381/1",
+                                         :expires_in => 1.second)
+    underlying_store.must_be_instance_of(::Redis::DistributedStore)
   end
 
   it "reads the data" do
@@ -24,6 +85,13 @@ describe ActiveSupport::Cache::RedisStore do
     with_store_management do |store|
       store.write "rabbit", @white_rabbit
       store.read("rabbit").must_equal(@white_rabbit)
+    end
+  end
+
+  it "writes the data with specified namespace" do
+    with_store_management do |store|
+      store.write "rabbit", @white_rabbit, namespace:'namespaced'
+      store.read("namespaced:rabbit").must_equal(@white_rabbit)
     end
   end
 
@@ -40,18 +108,8 @@ describe ActiveSupport::Cache::RedisStore do
     with_store_management do |store|
       store.write "rabbit", @white_rabbit
       store.read("rabbit").must_equal(@white_rabbit)
-      store.expire "rabbit", 1.seconds
+      store.expire "rabbit", 1.second
       sleep 2
-      store.read("rabbit").must_be_nil
-    end
-  end
-
-  it "respects expiration time in minutes" do
-    with_store_management do |store|
-      store.write "rabbit", @white_rabbit
-      store.read("rabbit").must_equal(@white_rabbit)
-      store.expire "rabbit", 1.minutes
-      sleep 61
       store.read("rabbit").must_be_nil
     end
   end
@@ -92,6 +150,14 @@ describe ActiveSupport::Cache::RedisStore do
     with_store_management do |store|
       store.delete "rabbit"
       store.read("rabbit").must_be_nil
+    end
+  end
+
+  it "deletes namespaced data" do
+    with_store_management do |store|
+      store.write "rabbit", @white_rabbit, namespace:'namespaced'
+      store.delete "rabbit", namespace:'namespaced'
+      store.read("namespaced:rabbit").must_be_nil
     end
   end
 
@@ -158,7 +224,7 @@ describe ActiveSupport::Cache::RedisStore do
   it "clears the store" do
     with_store_management do |store|
       store.clear
-      store.instance_variable_get(:@data).keys("*").flatten.must_be_empty
+      store.with { |client| client.keys("*") }.flatten.must_be_empty
     end
   end
 
@@ -174,11 +240,24 @@ describe ActiveSupport::Cache::RedisStore do
       store.fetch("rub-a-dub").must_be_nil
       store.fetch("rub-a-dub") { "Flora de Cana" }
       store.fetch("rub-a-dub").must_equal("Flora de Cana")
+    end
+  end
+
+  it "fetches data with expiration time" do
+    with_store_management do |store|
       store.fetch("rabbit", :force => true) # force cache miss
       store.fetch("rabbit", :force => true, :expires_in => 1.second) { @white_rabbit }
-      # store.fetch("rabbit").must_equal(@white_rabbit)
+      store.fetch("rabbit").must_equal(@white_rabbit)
       sleep 2
       store.fetch("rabbit").must_be_nil
+    end
+  end
+
+  it "fetches namespaced data" do
+    with_store_management do |store|
+      store.delete("rabbit", namespace:'namespaced')
+      store.fetch("rabbit", namespace:'namespaced'){@rabbit}.must_equal(@rabbit)
+      store.read("rabbit", namespace:'namespaced').must_equal(@rabbit)
     end
   end
 
@@ -194,6 +273,40 @@ describe ActiveSupport::Cache::RedisStore do
     result = @store.read_multi "rabbit", "irish whisky"
     result.wont_include('irish whisky')
     result.must_include('rabbit')
+  end
+
+  it "reads multiple namespaced keys" do
+    @store.write "rub-a-dub", "Flora de Cana", namespace:'namespaced'
+    @store.write "irish whisky", "Jameson", namespace:'namespaced'
+    result = @store.read_multi "rub-a-dub", "irish whisky", namespace:'namespaced'
+    result['namespaced:rub-a-dub'].must_equal("Flora de Cana")
+    result['namespaced:irish whisky'].must_equal("Jameson")
+  end
+
+  describe "fetch_multi" do
+    it "reads existing keys and fills in anything missing" do
+      @store.write "bourbon", "makers"
+
+      result = @store.fetch_multi("bourbon", "rye") do |key|
+        "#{key}-was-missing"
+      end
+
+      result.must_equal({ "bourbon" => "makers", "rye" => "rye-was-missing" })
+      @store.read("rye").must_equal("rye-was-missing")
+    end
+  end
+
+  describe "fetch_multi namespaced keys" do
+    it "reads existing keys and fills in anything missing" do
+      @store.write "bourbon", "makers", namespace:'namespaced'
+
+      result = @store.fetch_multi("bourbon", "rye", namespace:'namespaced') do |key|
+        "#{key}-was-missing"
+      end
+
+      result.must_equal({ "namespaced:bourbon" => "makers", "namespaced:rye" => "rye-was-missing" })
+      @store.read("namespaced:rye").must_equal("rye-was-missing")
+    end
   end
 
   describe "notifications" do
@@ -298,13 +411,15 @@ describe ActiveSupport::Cache::RedisStore do
   end
 
   private
-    def instantiate_store(addresses = nil)
-      ActiveSupport::Cache::RedisStore.new(addresses).instance_variable_get(:@data)
+    def instantiate_store(*addresses)
+      ActiveSupport::Cache::RedisStore.new(*addresses).instance_variable_get(:@data)
     end
 
     def with_store_management
       yield @store
       yield @dstore
+      yield @pool_store
+      yield @external_pool_store
     end
 
     def with_notifications
